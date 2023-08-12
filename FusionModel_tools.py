@@ -57,13 +57,27 @@ def save(datasets, types, names,  path, doit = False, verbose = True):
             
             if type_ == 'dataframe':     
                 filename = filename + '.csv'
-                df.to_csv(path + filename, header = True, index = True)  # need index after train_test_split
-                print("Saved dataset: %s" %filename) if verbose else None
+                data.to_csv(path + filename, header = True, index = True)  # need index after train_test_split
+                print("Saved dataset: %s" % (path+filename)) if verbose else None
 
             elif type_ == 'array':
                 filename = filename + '.npy'
                 np.save(os.path.join(path, filename), data)
-                print("Saved dataset: %s" %filename) if verbose else None        
+                print("Saved dataset: %s" % (path+filename) ) if verbose else None
+                
+            elif type_ == 'sparseMatrix':
+                filename = filename + '.npz'
+                from scipy import sparse
+                sparse.save_npz(os.path.join(path, filename), data)
+                print("Saved sparseMatrix : %s" % (path+filename) ) if verbose else None
+#                 your_matrix_back = sparse.load_npz("yourmatrix.npz")
+                
+            elif type_ == 'transformer':
+                filename = filename
+                import joblib
+                joblib.dump(data, os.path.join(path, filename))
+                print("Saved transformer: %s" % (path+filename) ) if verbose else None
+#                 my_scaler = joblib.load('scaler.gz')
         return
     
     else:
@@ -96,6 +110,8 @@ def preprocess_text_data(dataframe, verbose = True):
    
 
      # Tokenize and lemmatize
+    import nltk
+    nltk.download('wordnet', quiet = True)
     from nltk.tokenize import RegexpTokenizer
     from nltk.stem import WordNetLemmatizer
     
@@ -331,10 +347,10 @@ def get_token_length(df, col_with_tokens, col_with_length, verbose = False):
 
 def get_text_data(X_train, X_test, y_train, y_test):
 
-    ## transform feature vairables
+    ## transform feature variables
     X_transformed_train, X_transformed_test, text_transformer = transform_features(X_train, X_test)
     
-    ## transform target variable 
+    ## transform target variables
     y_transformed_train, y_transformed_test, target_transformer = transform_target(y_train, y_test)
     
     ## pack datasets
@@ -399,9 +415,9 @@ def transform_features(X_train, X_test):
     X_test_transformed = hstack(( text_len_scaled_test, language_encoded_test, text_vector_test ))
 
     # transformers
-    transformers = {'scaler' : scaler,
-                   'encoded': encoder,
-                   'vectorizer': vectorizer}
+    transformers = {'token_len_scaler' : scaler,
+                   'language_encoder'  : encoder,
+                   'lemmas_vectorizer' : vectorizer}
     
     
     return X_train_transformed, X_test_transformed, transformers
@@ -450,11 +466,15 @@ def vectorize_feature(X_train, X_test, col_to_vectorize):
     import warnings
     warnings.filterwarnings('ignore', category = UserWarning)
 
-    vectorizer = TfidfVectorizer(tokenizer = do_nothing, lowercase=False) #max_features=5000, 
-
+    vectorizer = TfidfVectorizer(tokenizer = do_nothing, lowercase=False, max_features=5000) #max_features=5000, 
+#    vectorizer = TfidfVectorizer(lowercase=True, max_features=5000)     
+    
     col_vector_train = vectorizer.fit_transform(X_train[col_to_vectorize])
     col_vector_test = vectorizer.transform(X_test[col_to_vectorize])
 
+    print("Vectorizer Vocabulary contains : %d terms" %(len(vectorizer.vocabulary_)) )
+    print("First Vocabulary terms :", dict(list(vectorizer.vocabulary_.items() )[:10]) )
+    
     return col_vector_train, col_vector_test, vectorizer
 
 
@@ -497,7 +517,7 @@ def initialize_NN(Nb_features, Nb_classes):
     ## instantiate layers
     inputs = Input(shape = Nb_features, name = "input")
     
-    dense1 = Dense(units = 512, activation = "relu",
+    dense1 = Dense(units = 256, activation = "relu",
                    kernel_initializer ='normal', name = "dense_1")
     
     dense2 = Dense(units = Nb_classes, activation = "softmax",      # for multiclass classification
@@ -730,6 +750,12 @@ def crop_square(image_array, left, right, top, bottom):
 
 
 def get_image_data(df_image_train, df_image_test):
+    '''
+    df_image_train contains the pixel dataframe, only that.one image per row (flattened) 1 feature = 1 pixel.
+    This is apreprocessed dataframe.
+    Same for the df_image_test.
+    '''
+    
     
     ## reshape to have 4D- matrices (nb_images, width, height, depth)
 
