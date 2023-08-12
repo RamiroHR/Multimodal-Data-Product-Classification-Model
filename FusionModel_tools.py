@@ -1,5 +1,7 @@
 import time
 import numpy as np
+import pandas as pd
+import os
 
 
 def date_time():
@@ -17,7 +19,30 @@ def date_time():
 
 
 
-def save(dataframes, names,  path, doit = False, verbose = True):
+# def save(dataframes, names,  path, doit = False, verbose = True):
+#     '''
+#     Save each dataframe in dataframes with the respective name in names.
+#     Save at the specified path.
+#     '''
+          
+#     if doit == True:
+
+#         splitting_time = date_time()
+
+#         for df, name in zip(dataframes, names):
+            
+#             filename = splitting_time + '_' + name + '.csv'
+#             df.to_csv(path + filename, header = True, index = True)  # need index after train_test_split
+#             print("Saved dataset: %s" %filename) if verbose else None
+            
+#         return
+    
+#     else:
+#         print("Datasets were not saved locally. Set doit = True to store them") if verbose else None
+#         return
+
+    
+def save(datasets, types, names,  path, doit = False, verbose = True):
     '''
     Save each dataframe in dataframes with the respective name in names.
     Save at the specified path.
@@ -27,17 +52,24 @@ def save(dataframes, names,  path, doit = False, verbose = True):
 
         splitting_time = date_time()
 
-        for df, name in zip(dataframes, names):
+        for data, type_, name in zip(datasets, types, names):
+            filename = splitting_time + '_' + name 
             
-            filename = splitting_time + '_' + name + '.csv'
-            df.to_csv(path + filename, header = True, index = True)  # need index after train_test_split
-            print("Saved dataset: %s" %filename) if verbose else None
-            
+            if type_ == 'dataframe':     
+                filename = filename + '.csv'
+                df.to_csv(path + filename, header = True, index = True)  # need index after train_test_split
+                print("Saved dataset: %s" %filename) if verbose else None
+
+            elif type_ == 'array':
+                filename = filename + '.npy'
+                np.save(os.path.join(path, filename), data)
+                print("Saved dataset: %s" %filename) if verbose else None        
         return
     
     else:
         print("Datasets were not saved locally. Set doit = True to store them") if verbose else None
         return
+
 
 
 
@@ -85,20 +117,6 @@ def preprocess_text_data(dataframe, verbose = True):
     get_token_length(df, 'lemma_tokens', 'text_token_len', verbose = verbose)
     
     
-#     ## save preprocessed dataframe ?
-#     save(dataframes = [df], names = [df_name], path = './Preprocessed_data/',\
-#          doit = save_preprocessed, verbose = True)
-    
-    
-    ##### data transformation #####
-    
-    ## Scale text_token_len
-    
-    ## One hot encode language
-    
-    ## title_descr TFIDF vectorizer
-
-    
     return df
 
 
@@ -140,14 +158,19 @@ def html_parsing(df, col_to_parse, verbose = False):
     HTML parse and lower case text content in col_to_parse
     '''
     from bs4 import BeautifulSoup
+
     import warnings
+    from bs4 import MarkupResemblesLocatorWarning #GuessedAtParserWarning
+    warnings.filterwarnings('ignore', category = MarkupResemblesLocatorWarning)
+    
     
     t0 = time.time()
     
-    with warnings.catch_warnings():     ## disable warnings when BeautifulSoup encounters just plain text.
-        warnings.simplefilter("ignore")
+#     with warnings.catch_warnings():     ## disable warnings when BeautifulSoup encounters just plain text.
+#         warnings.simplefilter("ignore")
+#         warnings.filterwarnings('ignore', category = MarkupResemblesLocatorWarning)
         
-        df[col_to_parse] = [BeautifulSoup(text, "lxml").get_text().lower() for text in df.loc[:,col_to_parse]]  #lxml, html.parser
+    df[col_to_parse] = [BeautifulSoup(text, "lxml").get_text().lower() for text in df.loc[:,col_to_parse]]  #lxml, html.parser
 
     t1 = time.time()
     
@@ -309,22 +332,47 @@ def get_token_length(df, col_with_tokens, col_with_length, verbose = False):
 def get_text_data(X_train, X_test, y_train, y_test):
 
     ## transform feature vairables
-    X_transformed_train, X_transformed_test, X_transformer = transform_features(X_train, X_test)
+    X_transformed_train, X_transformed_test, text_transformer = transform_features(X_train, X_test)
     
-    ## transform target variable
-    y_transformed_train, y_transformed_test, y_transformer = transform_target(y_train, y_test)
+    ## transform target variable 
+    y_transformed_train, y_transformed_test, target_transformer = transform_target(y_train, y_test)
     
     ## pack datasets
     text_data = {'X_train' : X_transformed_train,
-                 'X_test'  : X_transformed_test,
-                 'y_train' : y_transformed_train,
-                 'y_test' : y_transformed_test}
+                 'X_test'  : X_transformed_test}
+    
+    targets = {'y_train' : y_transformed_train,
+               'y_test'  : y_transformed_test}
     
     ## pack tranformers trained
-    text_transformers = {'X_transformer' : X_transformer,
-                         'y_transfomer'  : y_transformer}
+#     text_transformers = {'X_transformer' : X_transformer,
+#                          'y_transfomer'  : y_transformer}
     
-    return text_data, text_transformers
+    return text_data, targets, text_transformer, target_transformer
+    
+
+    
+def transform_target(y_train, y_test):
+    '''
+    transform target varibale as needed for the choosen model.
+    '''
+
+    ## Label encoder
+    from sklearn.preprocessing import LabelEncoder
+    target_encoder = LabelEncoder()
+    
+    y_train_encoded = target_encoder.fit_transform(y_train.squeeze())
+    y_test_encoded = target_encoder.transform(y_test.squeeze())
+    
+
+    ## One Hot encoder
+    from tensorflow.keras.utils import to_categorical
+
+    yy_train = to_categorical(y_train_encoded, dtype = 'int') 
+    yy_test = to_categorical(y_test_encoded, dtype = 'int')   
+    
+    
+    return yy_train, yy_test, target_encoder
     
     
         
@@ -399,6 +447,8 @@ def vectorize_feature(X_train, X_test, col_to_vectorize):
     '''
 
     from sklearn.feature_extraction.text import TfidfVectorizer
+    import warnings
+    warnings.filterwarnings('ignore', category = UserWarning)
 
     vectorizer = TfidfVectorizer(tokenizer = do_nothing, lowercase=False) #max_features=5000, 
 
@@ -412,33 +462,11 @@ def do_nothing(tokens):
     return tokens
 
 
-def transform_target(y_train, y_test):
-    '''
-    transform target varibale as needed for the choosen model.
-    '''
-
-    ## Label encoder
-    from sklearn.preprocessing import LabelEncoder
-    target_encoder = LabelEncoder()
-
-    y_train_encoded = target_encoder.fit_transform(y_train.squeeze())
-    y_test_encoded = target_encoder.transform(y_test.squeeze())
-   
-    ## One Hot encoder
-    from tensorflow.keras.utils import to_categorical
-
-    yy_train = to_categorical(y_train_encoded, dtype = 'int') 
-    yy_test = to_categorical(y_test_encoded, dtype = 'int')   
-
-    yy_train = y_train_encoded
-    yy_test = y_test_encoded
-    
-    return yy_train, yy_test, target_encoder
 
 
 
 
-####################################################################################################################
+#################################################################################################################
 
 
 def initialize_text_model(model_type, Nb_features, Nb_classes):
@@ -467,13 +495,13 @@ def initialize_NN(Nb_features, Nb_classes):
     
     
     ## instantiate layers
-    inputs = Input(shape = Nb_features, name = "Input")
+    inputs = Input(shape = Nb_features, name = "input")
     
-    dense1 = Dense(units = 512, activation = "ReLu", \
-                   kernel_initializer ='normal', name = "Dense_1")
+    dense1 = Dense(units = 512, activation = "relu",
+                   kernel_initializer ='normal', name = "dense_1")
     
-    dense2 = Dense(units = Nb_classes, activation = "softmax", \
-                   kernel_initializer ='normal', name = "Dense_2")
+    dense2 = Dense(units = Nb_classes, activation = "softmax",      # for multiclass classification
+                   kernel_initializer ='normal', name = "dense_2")
     
     
     ## link layers & model
@@ -483,37 +511,401 @@ def initialize_NN(Nb_features, Nb_classes):
     
     NN_clf = Model(inputs = inputs, outputs = outputs)
     
+    
+    ## define training process
+    NN_clf.compile(loss = 'categorical_crossentropy',  
+              optimizer = 'adam',                 
+              metrics = ['accuracy'])  
+
+    display(NN_clf.summary())
+    
     return NN_clf
     
 
+def save_model(model, name, path, doit = False):
+    
+    from joblib import dump, load
+
+    if doit:
+        
+        fitting_time = date_time()
+        model_filename =  path + fitting_time + '_' + name + '.keras'
+
+#         dump(model, model_filename)
+        model.save(model_filename)
+        print(f"Model saved as {model_filename}")
+
+    else:
+        print("model is not saved. Set doit = True to store the model locally. \n\n")
+    
+        
+
+def reload_model(model_fullname, path, doit = False):
+    
+#     from joblib import dump, load
+    import tensorflow as tf
+
+    if doit:
+        model_filename =  path + model_fullname 
+
+#         reloaded_model = load(model, model_filename)
+        reloaded_model = tf.keras.models.load_model(model_filename)
+        print(f"Reloaded model from {model_filename}")
+       
+        return reloaded_model
+        
+    else:
+        print("The model is NOT reloaded. Set doit = True to reload a model. \n")
+
+
+
+#################################################################################################################
+
+
+def preprocess_image_data(df, threshold, new_pixel_nb, output ='dataframe', verbose = False):
+    
+    if ('productid' not in df.columns) or ('imageid' not in df.columns):
+        print("Image data cannot be found from information on the dataframe. Try with another dataset.")
+        return None
+    
+    import cv2
+    
+    t0 = time.time()
+    
+    img_array = np.empty((df.shape[0], new_pixel_nb * new_pixel_nb * 3), dtype = np.uint8)
+    
+    for i, idx in enumerate(df.index):
+        
+        # load image
+        file = "./datasets/image_train/image_" + str(df.loc[idx,'imageid'])+"_product_" \
+                                               + str(df.loc[idx,'productid'])+".jpg"
+        image = cv2.imread(file)
+        
+        # crop image 
+        cropped_image = crop_image(image, threshold = threshold)
+        
+        # resize image (downscale)
+        resized_image = cv2.resize(cropped_image, (new_pixel_nb, new_pixel_nb))
+    
+        # vectorize image (3D -> 1D) and append to general array
+        img_array[i,...] = resized_image.reshape(new_pixel_nb*new_pixel_nb*3)
+        
+        if verbose:
+            checkpoints = [1000,2000,3000,4000]
+            if ((i in checkpoints) or i%5000 ==0):
+                print("%d images at time %0.2f minutes" %(i, ((time.time()-t0)/60) ) )
+
+                
+    ## prepare dataframe with vector images
+    df_vectors = pd.DataFrame(data = img_array)
+    
+    df_vectors.index = df.index
+    
+    column_names = []
+    for j in range(new_pixel_nb*new_pixel_nb*3):
+        column_names.append('px_'+str(j))
+    df_vectors.columns = column_names
+
+    
+    t1 = time.time()
+    if verbose:
+        #print("Vectorization of %d images takes %0.2f seconds" %(df.shape[0],(t1-t0)) )
+        print("Vectorization of %d images takes %0.2f minutes" %(df.shape[0],((t1-t0)/60)) )                
+
+    if output == 'dataframe':
+        return df_vectors
+    elif output == 'array':
+        return img_array
+    
+
+def crop_image(image, threshold):
+
+    # Calculate the boundaries at which the RGB threshold is touched
+    left_boundary = find_left_boundary(image, threshold)
+    right_boundary = find_right_boundary(image, threshold)
+    top_boundary = find_top_boundary(image, threshold)
+    bottom_boundary = find_bottom_boundary(image, threshold)
+
+    # crop image smallest square possible (including all boundaries inside)
+    cropped_image = crop_square(image, left_boundary, right_boundary, top_boundary, bottom_boundary)
+
+    return cropped_image
+
+
+
+def find_left_boundary(image_array, threshold):
+    height, width, _ = image_array.shape
+
+    left_boundary = None
+    for col in range(width):
+        
+        if np.any(image_array[:,col,:] < threshold):
+            left_boundary = col
+            break
+
+    if left_boundary is None:
+        left_boundary = 0
+
+    return left_boundary
+
+def find_right_boundary(image_array, threshold):
+    height, width, _ = image_array.shape
+
+    right_boundary = None
+    for col in range(width - 1, -1, -1):
+        
+        if np.any(image_array[:,col,:] < threshold):
+            right_boundary = col
+            break
+
+    if right_boundary is None:
+        right_boundary = width - 1
+
+    return right_boundary
+
+def find_top_boundary(image_array, threshold):
+    height, width, _ = image_array.shape
+
+    top_boundary = None
+    for row in range(height):
+    
+        if np.any(image_array[row,:,:] < threshold):
+            top_boundary = row
+            break
+
+    if top_boundary is None:
+        top_boundary = 0
+
+    return top_boundary
+
+def find_bottom_boundary(image_array, threshold):
+    height, width, _ = image_array.shape
+
+    bottom_boundary = None
+    for row in range(height - 1, -1, -1):
+        
+        if np.any(image_array[row,:,:] < threshold):
+            bottom_boundary = row
+            break
+
+    if bottom_boundary is None:
+        bottom_boundary = height - 1
+
+    return bottom_boundary
+
+
+
+def crop_square(image_array, left, right, top, bottom):
+    cropped_width = right - left + 1
+    cropped_height = bottom - top + 1
+
+    # Calculate the side length of the largest square that fits all boundaries
+    side_length = max(cropped_width, cropped_height)
+
+    horizontal_pad = (side_length - cropped_width) // 2
+    vertical_pad = (side_length - cropped_height) // 2
+
+    left_new = max(0, left - horizontal_pad)
+    right_new = min(image_array.shape[1] - 1, right + horizontal_pad)
+    top_new = max(0, top - vertical_pad)
+    bottom_new = min(image_array.shape[0] - 1, bottom + vertical_pad)
+    
+    
+    ## verify if vertical dimension iqueals horizontal dimension, and correct:
+    if (right_new - left_new) > (bottom_new - top_new):
+        if top_new > 0:
+            top_new = top - vertical_pad - 1
+        elif bottom_new < image_array.shape[0] - 1:
+            bottom_new = bottom + vertical_pad + 1
+    elif (right_new - left_new) < (bottom_new - top_new):
+        if left_new > 0:
+            left_new = left - horizontal_pad - 1
+        elif right_new < image_array.shape[1] - 1:
+            right_new = right + horizontal_pad + 1
+    
+
+    cropped_image = image_array[top_new : bottom_new+1, left_new : right_new+1, :]
+    return cropped_image
+
+
+
+def get_image_data(df_image_train, df_image_test):
+    
+    ## reshape to have 4D- matrices (nb_images, width, height, depth)
+
+    N_img_train = df_image_train.shape[0]
+    N_img_test = df_image_test.shape[0]
+    N_px = 100
+    N_ch = 3
+
+#     XX_train = df_image_train.to_numpy().reshape((N_img_train, N_px, N_px, N_ch))
+#     XX_test = df_image_test.to_numpy().reshape((N_img_test, N_px, N_px, N_ch))
+    XX_train = df_image_train.reshape((N_img_train, N_px, N_px, N_ch))
+    XX_test = df_image_test.reshape((N_img_test, N_px, N_px, N_ch))
+
+    
+
+    ## Re normalize pixels intensity range to [0,1]
+    XX_train = XX_train / 255
+    XX_test = XX_test / 255
+    
+    ## pack data
+    image_data = {'train' : XX_train,
+                  'test'  : XX_test }#,
+#                   'train_index' : df_image_train.index,
+#                   'test_index'  : df_image_test.index}
+    
+    return image_data
+
+
+#################################################################################################################
+
+    
+def initialize_image_model(model_type, image_shape, Nb_classes):
+    '''
+    define which model to initialize for text data.
+    Add other elif clausses to add other models initialization functions
+    '''
+    
+    if model_type == 'CNN':
+        model = initialize_CNN(image_shape, Nb_classes)
+    
+    else:
+        print("No model was initalized")
+        model = None
+        
+    return model
+
+
+
+def initialize_CNN(image_shape, Nb_classes):
+        
+    from tensorflow.keras.layers import Input, Dense
+    from tensorflow.keras.models import Model
+    from tensorflow.keras.layers import Conv2D 
+    from tensorflow.keras.layers import MaxPooling2D
+    from tensorflow.keras.layers import Dropout 
+    from tensorflow.keras.layers import Flatten
+
+    ## instantiate layers
+
+    inputs = Input(shape = image_shape, name = "input")
+
+    first_layer = Conv2D(filters = 32,
+                         kernel_size = (5, 5),
+                         padding = 'valid',
+                         activation = 'relu')
+
+    second_layer = MaxPooling2D(pool_size = (2, 2))
+
+    third_layer = Dropout(rate = 0.2)
+
+    fourth_layer = Flatten()
+
+    fifth_layer = Dense(units = 128,
+                        activation = 'relu')
+
+    output_layer = Dense(units = Nb_classes,
+                         activation='softmax')
+
+
+
+    ## link layers & model
+
+    x=first_layer(inputs)
+
+    x=second_layer(x)
+    x=third_layer(x)
+    x=fourth_layer(x)
+    x=fifth_layer(x)
+
+    outputs=output_layer(x)
+
+
+    CNN_clf = Model(inputs = inputs, outputs = outputs)
+    
+    
+    ## define training process
+    CNN_clf.compile(loss='categorical_crossentropy',
+              optimizer='adam',                
+              metrics=['accuracy'])
+
+    
+    return CNN_clf
 
 
 
 
+###########################################################################################################
+##### Fusion model ###########################
+
+def remove_classification_head(parent_model):
+    
+    from tensorflow.keras.models import Model
+
+    x = parent_model.layers[-2].output
+
+    headless_model = Model(inputs = parent_model.input, outputs = x)
+
+    display(headless_model.summary())
+        
+    return headless_model
 
 
 
+def initialize_fusion_model(model_type, params):
+    '''
+    define which model to initialize for text data.
+    Add other elif clausses to add other models initialization functions
+    '''
+    
+    if model_type == 'NN':
+        model = initialize_fusion_NN(params)
+        
+    else:
+        print("No model was initalized")
+        model = None
+        
+    return model
 
 
+def initialize_fusion_NN(params): #(Nb_features, Nb_classes):
+    '''
+    Initialize simple NN according to the data dimensions passed as arguments.
+    '''
+    
+    from tensorflow.keras.layers import Input, Dense
+    from tensorflow.keras.models import Model
+    
+    Nb_features = params['Nb_features']
+    Nb_classes = params['Nb_classes']
+    
+    ## instantiate layers
+    inputs = Input(shape = Nb_features, name = "input")
+    
+    dense1 = Dense(units = 128, activation = "relu",
+                   kernel_initializer ='normal', name = "dense_1")
+    
+    dense2 = Dense(units = Nb_classes, activation = "softmax",      # for multiclass classification
+                   kernel_initializer ='normal', name = "dense_2")
+    
+    
+    ## link layers & model
+    
+    x = dense1(inputs)
+    outputs = dense2(x)
+    
+    NN_clf = Model(inputs = inputs, outputs = outputs)
+    
+    
+    ## define training process
+    NN_clf.compile(loss = 'categorical_crossentropy',  
+              optimizer = 'adam',                 
+              metrics = ['accuracy'])  
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    display(NN_clf.summary())
+    
+    return NN_clf
 
 
 
