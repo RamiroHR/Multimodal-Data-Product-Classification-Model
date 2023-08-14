@@ -4,3 +4,5 @@ datasets/
 Preprocessed_data/
 Trained_models_and_metrics/
 __pycache__
+to_check_Preprocessed_data/
+to_check_Trained_models_and_metrics/
