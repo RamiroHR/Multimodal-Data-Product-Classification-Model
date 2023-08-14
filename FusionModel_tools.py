@@ -1,7 +1,7 @@
 import time
 import numpy as np
 import pandas as pd
-import os
+import os 
 
 
 def date_time():
@@ -45,7 +45,7 @@ def date_time():
 def save(datasets, types, names,  path, doit = False, verbose = True):
     '''
     Save each dataframe in dataframes with the respective name in names.
-    Save at the specified path.
+    Save at the specified path. 
     '''
           
     if doit == True:
@@ -57,13 +57,42 @@ def save(datasets, types, names,  path, doit = False, verbose = True):
             
             if type_ == 'dataframe':     
                 filename = filename + '.csv'
-                df.to_csv(path + filename, header = True, index = True)  # need index after train_test_split
-                print("Saved dataset: %s" %filename) if verbose else None
+                data.to_csv(path + filename, header = True, index = True)  # need index after train_test_split
+                print("Saved dataset: %s" % (path+filename)) if verbose else None
 
             elif type_ == 'array':
                 filename = filename + '.npy'
                 np.save(os.path.join(path, filename), data)
-                print("Saved dataset: %s" %filename) if verbose else None        
+                print("Saved dataset: %s" % (path+filename) ) if verbose else None
+                
+            elif type_ == 'sparseMatrix':
+                filename = filename + '.npz'
+                from scipy import sparse
+                sparse.save_npz(os.path.join(path, filename), data)
+                print("Saved sparseMatrix : %s" % (path+filename) ) if verbose else None
+#                 your_matrix_back = sparse.load_npz("yourmatrix.npz")
+                
+            elif type_ == 'transformer':
+                filename = filename
+                import joblib
+                joblib.dump(data, os.path.join(path, filename))
+                print("Saved transformer: %s" % (path+filename) ) if verbose else None
+#                 my_scaler = joblib.load('scaler.gz')
+
+            elif type_ == 'XLMatrix':
+                filename = filename + '.npy'
+                import joblib
+                joblib.dump(data, os.path.join(path, filename))
+                print("Saved large matrix: %s" % (path+filename) ) if verbose else None
+#                 my_matrix = joblib.load('matrix')
+
+            elif type_ == 'arrayXL':
+                filename = filename + '.npz'
+                np.savez_compressed( path + filename, array = data)
+                print("Saved compressed large array: %s" % (path+filename) ) if verbose else None
+#                 loaded_data = np.load(save_path)
+#                 loaded_array = loaded_data['array']
+
         return
     
     else:
@@ -96,6 +125,8 @@ def preprocess_text_data(dataframe, verbose = True):
    
 
      # Tokenize and lemmatize
+    import nltk
+    nltk.download('wordnet', quiet = True)
     from nltk.tokenize import RegexpTokenizer
     from nltk.stem import WordNetLemmatizer
     
@@ -331,10 +362,10 @@ def get_token_length(df, col_with_tokens, col_with_length, verbose = False):
 
 def get_text_data(X_train, X_test, y_train, y_test):
 
-    ## transform feature vairables
+    ## transform feature variables
     X_transformed_train, X_transformed_test, text_transformer = transform_features(X_train, X_test)
     
-    ## transform target variable 
+    ## transform target variables
     y_transformed_train, y_transformed_test, target_transformer = transform_target(y_train, y_test)
     
     ## pack datasets
@@ -399,9 +430,9 @@ def transform_features(X_train, X_test):
     X_test_transformed = hstack(( text_len_scaled_test, language_encoded_test, text_vector_test ))
 
     # transformers
-    transformers = {'scaler' : scaler,
-                   'encoded': encoder,
-                   'vectorizer': vectorizer}
+    transformers = {'token_len_scaler' : scaler,
+                   'language_encoder'  : encoder,
+                   'lemmas_vectorizer' : vectorizer}
     
     
     return X_train_transformed, X_test_transformed, transformers
@@ -450,11 +481,15 @@ def vectorize_feature(X_train, X_test, col_to_vectorize):
     import warnings
     warnings.filterwarnings('ignore', category = UserWarning)
 
-    vectorizer = TfidfVectorizer(tokenizer = do_nothing, lowercase=False) #max_features=5000, 
-
+    vectorizer = TfidfVectorizer(tokenizer = do_nothing, lowercase=False, max_features=5000) #max_features=5000, 
+#    vectorizer = TfidfVectorizer(lowercase=True, max_features=5000)     
+    
     col_vector_train = vectorizer.fit_transform(X_train[col_to_vectorize])
     col_vector_test = vectorizer.transform(X_test[col_to_vectorize])
 
+    print("Vectorizer Vocabulary contains : %d terms" %(len(vectorizer.vocabulary_)) )
+    print("First Vocabulary terms :", dict(list(vectorizer.vocabulary_.items() )[:10]) )
+    
     return col_vector_train, col_vector_test, vectorizer
 
 
@@ -497,7 +532,7 @@ def initialize_NN(Nb_features, Nb_classes):
     ## instantiate layers
     inputs = Input(shape = Nb_features, name = "input")
     
-    dense1 = Dense(units = 512, activation = "relu",
+    dense1 = Dense(units = 256, activation = "relu",
                    kernel_initializer ='normal', name = "dense_1")
     
     dense2 = Dense(units = Nb_classes, activation = "softmax",      # for multiclass classification
@@ -562,7 +597,7 @@ def reload_model(model_fullname, path, doit = False):
 #################################################################################################################
 
 
-def preprocess_image_data(df, threshold, new_pixel_nb, output ='dataframe', verbose = False):
+def preprocess_image_data(df, threshold, new_pixel_nb, path, output ='array', verbose = False):
     
     if ('productid' not in df.columns) or ('imageid' not in df.columns):
         print("Image data cannot be found from information on the dataframe. Try with another dataset.")
@@ -577,7 +612,7 @@ def preprocess_image_data(df, threshold, new_pixel_nb, output ='dataframe', verb
     for i, idx in enumerate(df.index):
         
         # load image
-        file = "./datasets/image_train/image_" + str(df.loc[idx,'imageid'])+"_product_" \
+        file = path + "image_" + str(df.loc[idx,'imageid'])+"_product_" \
                                                + str(df.loc[idx,'productid'])+".jpg"
         image = cv2.imread(file)
         
@@ -730,6 +765,13 @@ def crop_square(image_array, left, right, top, bottom):
 
 
 def get_image_data(df_image_train, df_image_test):
+    '''
+    df_image_train contains the pixel dataframe, only that. 
+    One image per row (flattened) 1 feature = 1 pixel.
+    This is apreprocessed dataframe.
+    Same for the df_image_test.
+    '''
+    
     
     ## reshape to have 4D- matrices (nb_images, width, height, depth)
 
