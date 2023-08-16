@@ -764,7 +764,7 @@ def crop_square(image_array, left, right, top, bottom):
 
 
 
-def get_image_data(df_image_train, df_image_test):
+def get_image_data(df_image_train, df_image_test, pixel_per_side):
     '''
     df_image_train contains the pixel dataframe, only that. 
     One image per row (flattened) 1 feature = 1 pixel.
@@ -777,19 +777,19 @@ def get_image_data(df_image_train, df_image_test):
 
     N_img_train = df_image_train.shape[0]
     N_img_test = df_image_test.shape[0]
-    N_px = 100
+    N_px = pixel_per_side
     N_ch = 3
 
 #     XX_train = df_image_train.to_numpy().reshape((N_img_train, N_px, N_px, N_ch))
 #     XX_test = df_image_test.to_numpy().reshape((N_img_test, N_px, N_px, N_ch))
-    XX_train = df_image_train.reshape((N_img_train, N_px, N_px, N_ch))
-    XX_test = df_image_test.reshape((N_img_test, N_px, N_px, N_ch))
+    XX_train = df_image_train.reshape((N_img_train, N_px, N_px, N_ch)) *(1./ 255)
+    XX_test = df_image_test.reshape((N_img_test, N_px, N_px, N_ch)) *(1./ 255)
 
     
 
     ## Re normalize pixels intensity range to [0,1]
-    XX_train = XX_train / 255
-    XX_test = XX_test / 255
+#     XX_train = XX_train / 255
+#     XX_test = XX_test / 255
     
     ## pack data
     image_data = {'train' : XX_train,
