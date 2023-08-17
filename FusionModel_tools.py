@@ -3,6 +3,9 @@ import numpy as np
 import pandas as pd
 import os 
 
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set()
 
 def date_time():
     '''
@@ -540,7 +543,6 @@ def initialize_NN(Nb_features, Nb_classes):
     
     
     ## link layers & model
-    
     x = dense1(inputs)
     outputs = dense2(x)
     
@@ -559,7 +561,7 @@ def initialize_NN(Nb_features, Nb_classes):
 
 def save_model(model, name, path, doit = False):
     
-    from joblib import dump, load
+#     from joblib import dump, load
 
     if doit:
         
@@ -758,13 +760,13 @@ def crop_square(image_array, left, right, top, bottom):
         elif right_new < image_array.shape[1] - 1:
             right_new = right + horizontal_pad + 1
     
-
+ 
     cropped_image = image_array[top_new : bottom_new+1, left_new : right_new+1, :]
     return cropped_image
 
 
 
-def get_image_data(df_image_train, df_image_test, pixel_per_side):
+def get_image_data(df_image_train, df_image_test, pixel_per_side, scale = None):
     '''
     df_image_train contains the pixel dataframe, only that. 
     One image per row (flattened) 1 feature = 1 pixel.
@@ -773,7 +775,7 @@ def get_image_data(df_image_train, df_image_test, pixel_per_side):
     '''
     
     
-    ## reshape to have 4D- matrices (nb_images, width, height, depth)
+    ## reshape to have 4D- matrices (nb_images, width, height, depth) and renormalize.
 
     N_img_train = df_image_train.shape[0]
     N_img_test = df_image_test.shape[0]
@@ -782,15 +784,16 @@ def get_image_data(df_image_train, df_image_test, pixel_per_side):
 
 #     XX_train = df_image_train.to_numpy().reshape((N_img_train, N_px, N_px, N_ch))
 #     XX_test = df_image_test.to_numpy().reshape((N_img_test, N_px, N_px, N_ch))
-    XX_train = df_image_train.reshape((N_img_train, N_px, N_px, N_ch)) *(1./ 255)
-    XX_test = df_image_test.reshape((N_img_test, N_px, N_px, N_ch)) *(1./ 255)
+    XX_train = df_image_train.reshape((N_img_train, N_px, N_px, N_ch))
+    XX_test = df_image_test.reshape((N_img_test, N_px, N_px, N_ch))
 
     
 
     ## Re normalize pixels intensity range to [0,1]
-#     XX_train = XX_train / 255
-#     XX_test = XX_test / 255
-    
+    if scale is not None:
+        XX_train = XX_train / scale
+        XX_test = XX_test / scale
+
     ## pack data
     image_data = {'train' : XX_train,
                   'test'  : XX_test }#,
@@ -830,39 +833,59 @@ def initialize_CNN(image_shape, Nb_classes):
     from tensorflow.keras.layers import Flatten
 
     ## instantiate layers
-
     inputs = Input(shape = image_shape, name = "input")
 
-    first_layer = Conv2D(filters = 32,
-                         kernel_size = (5, 5),
-                         padding = 'valid',
+    
+    ## first convolution layers
+    C1_layer = Conv2D(filters = 8,
+                         kernel_size = (3, 3),
+                         padding = 'same',  # better than 'valid'
                          activation = 'relu')
 
-    second_layer = MaxPooling2D(pool_size = (2, 2))
+    P1_layer = MaxPooling2D(pool_size = (2, 2))
 
-    third_layer = Dropout(rate = 0.2)
+    ## second convolution layer
+    C2_layer = Conv2D(filters = 32,
+                         kernel_size = (5, 5),
+                         padding = 'valid',  # to shrink output size a bit
+                         strides = (2,2),
+                         activation = 'relu')
 
-    fourth_layer = Flatten()
+    P2_layer = MaxPooling2D(pool_size = (2, 2))
 
-    fifth_layer = Dense(units = 128,
+    ## drop out and flattening:
+    Drp1_layer = Dropout(rate = 0.4)
+    Flt_layer = Flatten()
+
+    ## dense layers:
+    D1_layer = Dense(units = 512,
+                        activation = 'relu')
+
+    Drp2_layer = Dropout(rate = 0.7)
+
+    D2_layer = Dense(units = 128,
                         activation = 'relu')
 
     output_layer = Dense(units = Nb_classes,
                          activation='softmax')
 
-
-
+    
     ## link layers & model
 
-    x=first_layer(inputs)
+    x=C1_layer(inputs)
+    x=P1_layer(x)
 
-    x=second_layer(x)
-    x=third_layer(x)
-    x=fourth_layer(x)
-    x=fifth_layer(x)
+    x=C2_layer(x)
+    x=P2_layer(x)
+
+    x=Drp1_layer(x)
+    x=Flt_layer(x)
+
+    x=D1_layer(x)
+    x=Drp2_layer(x)
+    x=D2_layer(x)
 
     outputs=output_layer(x)
-
 
     CNN_clf = Model(inputs = inputs, outputs = outputs)
     
@@ -872,6 +895,10 @@ def initialize_CNN(image_shape, Nb_classes):
               optimizer='adam',                
               metrics=['accuracy'])
 
+    
+    ## display architecture
+    CNN_clf.summary()
+    
     
     return CNN_clf
 
@@ -918,6 +945,9 @@ def initialize_fusion_NN(params): #(Nb_features, Nb_classes):
     
     from tensorflow.keras.layers import Input, Dense
     from tensorflow.keras.models import Model
+    from tensorflow.keras.layers import Dropout 
+    from tensorflow.keras.layers import BatchNormalization
+    from tensorflow.keras.layers import Activation
     
     Nb_features = params['Nb_features']
     Nb_classes = params['Nb_classes']
@@ -925,17 +955,54 @@ def initialize_fusion_NN(params): #(Nb_features, Nb_classes):
     ## instantiate layers
     inputs = Input(shape = Nb_features, name = "input")
     
-    dense1 = Dense(units = 128, activation = "relu",
-                   kernel_initializer ='normal', name = "dense_1")
+    norm_0 = BatchNormalization() #epsilon=1e-06, mode=0, momentum=0.9, weights=None
     
-    dense2 = Dense(units = Nb_classes, activation = "softmax",      # for multiclass classification
+#     dense1 = Dense(units = 256, activation = "relu",
+#                    kernel_initializer ='normal', name = "dense_1")
+    dense1 = Dense(units = 256,
+               kernel_initializer ='normal', name = "dense_1")
+
+    norm_1 = BatchNormalization() #epsilon=1e-06, mode=0, momentum=0.9, weights=None
+
+    act_1 = Activation('relu')
+    
+    drop_12 = Dropout(rate = 0.7)
+
+#     dense2 = Dense(units = 512, activation = "relu",
+#                    kernel_initializer ='normal', name = "dense_2")
+    dense2 = Dense(units = 64,
                    kernel_initializer ='normal', name = "dense_2")
+        
+    norm_2 = BatchNormalization() #epsilon=1e-06, mode=0, momentum=0.9, weights=None
+  
+    act_2 = Activation('relu')
+
+    drop_23 = Dropout(rate = 0.5)
     
+    dense3 = Dense(units = Nb_classes, activation = "softmax",      # for multiclass classification
+                   kernel_initializer ='normal', name = "dense_3")
+
+#     drop_3o = Dropout(rate = 0.05)
     
     ## link layers & model
+
+#     x = dense1(inputs)
     
-    x = dense1(inputs)
-    outputs = dense2(x)
+    x = norm_0(inputs)
+    x = dense1(x)
+    x = norm_1(x)
+    x = act_1(x)
+
+    x = drop_12(x)
+    x = dense2(x)
+    x = norm_2(x)
+    X = act_2(x)
+
+    x = drop_23(x)
+#     x = dense3(x)
+#     outputs = drop_3o(x)
+    outputs = dense3(x)
+    
     
     NN_clf = Model(inputs = inputs, outputs = outputs)
     
@@ -951,8 +1018,163 @@ def initialize_fusion_NN(params): #(Nb_features, Nb_classes):
 
 
 
+##########################################################################################################
+## model evaluations
+
+def plot_training_history(training_history, N_epochs, yrange = None):
+    '''
+    simple plot of the training and validation accuracy vs epochs
+    '''
+    
+    x_epochs = np.arange(1,N_epochs + 1,1)
+
+    train_acc = training_history.history['accuracy']
+    val_acc = training_history.history['val_accuracy']
+    
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    sns.set()
+
+    plt.figure(figsize=(8,6))
+
+    sns.lineplot(x = x_epochs, y = train_acc, marker = 'o', label = 'Training Accuracy')
+    sns.lineplot(x = x_epochs, y = val_acc, marker = 'o', label = 'Validation Accuracy')
+
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy')
+    plt.title('Accuracy Evolution during training: NN_clf')
+    plt.legend(loc='lower right')#loc='right'
+    plt.ylim(yrange[0], yrange[1])
+    
+    return
 
 
+def get_train_test_accuracy(model, X_train, X_test, y_train, y_test):
+    
+    loss_train, accuracy_train = model.evaluate(X_train, y_train)
+    loss_test, accuracy_test = model.evaluate(X_test, y_test)
+
+    print("Train set accuracy = %0.3f and loss function = %0.2f" %(accuracy_train, loss_train) )
+    print("Test  set accuracy = %0.3f and loss function = %0.2f" %(accuracy_test, loss_test) )
+
+    return
+
+
+    yy_pred_vectors = model.predict(X_test)
+
+def get_confusionMatrix(y_test_vectors, y_pred_vectors, target_encoder, categories):
+
+    ## reverse One-hot-encoding
+    y_pred_class = y_pred_vectors.argmax(axis = 1)
+    y_test_class = y_test_vectors.argmax(axis = 1)
+
+    ## reverse label encoder
+    y_pred = target_encoder.inverse_transform(y_pred_class)
+    y_test_prdCode = target_encoder.inverse_transform(y_test_class)   # should be equal to y_test
+    
+    ## set categories
+    categories = categories.tolist()
+
+    y_pred_cat = pd.Categorical(y_pred, categories = categories)
+    y_test_cat = pd.Categorical(y_test_prdCode, categories = categories)
+
+    ## confusion matrix
+    cm = pd.crosstab(y_test_cat, y_pred_cat, rownames=['Reality'], colnames=['Predictions'], dropna = False)
+
+    return cm
+
+
+def plot_confusionMatrix(cm):
+
+    print(cm.shape)
+    
+    ## plot confusion matrix
+    
+    fig, ax = plt.subplots(figsize = (18,10))
+    sns.heatmap(cm, annot = True, ax=ax, cmap='Greens', fmt ='d', vmin = 0, vmax = 100)
+
+    ax.xaxis.set_ticks_position('top')
+    ax.xaxis.set_tick_params(length = 0)
+    ax.xaxis.set_label_position('top')
+
+    return
+
+
+
+def get_classificationReport(y_test_vectors, y_pred_vectors, target_encoder, categories):
+
+    ## reverse One-hot-encoding
+    y_pred_class = y_pred_vectors.argmax(axis = 1)
+    y_test_class = y_test_vectors.argmax(axis = 1)
+
+    ## reverse label encoder
+    y_pred = target_encoder.inverse_transform(y_pred_class)
+    y_test_prdCode = target_encoder.inverse_transform(y_test_class)   # should be equal to y_test
+    
+ 
+    ## classification report
+    from sklearn.metrics import classification_report 
+
+    cr_txt = classification_report(y_test_prdCode, y_pred)
+    cr = classification_report(y_test_prdCode, y_pred, output_dict = True)
+
+    cr.update({"accuracy": {"precision": None, 
+                            "recall": None, 
+                            "f1-score": cr["accuracy"], 
+                            "support": cr['macro avg']['support']} })
+
+    micro_cr = pd.DataFrame(cr).transpose().reset_index().rename(columns={'index': 'prdtypecode'}).iloc[:-3,:]
+    macro_cr = pd.DataFrame(cr).transpose().reset_index().rename(columns={'index': 'metrics'}).iloc[-3:,:]
+
+    return cr_txt, micro_cr, macro_cr
+
+
+def plot_classificationReport(micro_cr):
+    art = sns.color_palette()
+
+    fig, axs = plt.subplots(1,2,figsize = (5.833,9),gridspec_kw={'width_ratios': [3.0, 2.0]})
+
+    sns.heatmap(micro_cr.set_index('prdtypecode')[['precision', 'recall', 'f1-score']], annot = True, 
+                cmap='viridis', vmin = 0, vmax = 1, ax = axs[0], cbar = False)
+    
+    sns.barplot(data = micro_cr, x = 'support', y='prdtypecode', color = 'grey', alpha = 0.75, ax = axs[1])
+
+
+    axs[0].xaxis.set_ticks_position('top')
+    axs[0].xaxis.set_tick_params(length = 0)
+    axs[0].xaxis.set_label_position('top')
+    axs[0].set_ylabel('Product Type Code')
+
+    axs[1].set_xticks([0,500,1000,1500,2000])
+    axs[1].set_xticklabels([0,'',1000,'',2000], fontsize=12)
+    axs[1].yaxis.set_tick_params(labelleft=False)
+    axs[1].set_ylabel('')
+    axs[1].set_xlabel('Nb of observations')
+
+    plt.subplots_adjust(wspace=0.02, hspace=0);
+    
+    return
+
+
+def save_model_metrics(data, metric_type, model_name, path, timestamp):
+    '''
+    Save the data being iether the confusion matrix or the classififcation report.
+    '''
+    
+    if metric_type == 'confusionMatrix':
+        filename = path + timestamp +'_' + model_name + '_confusionMatrix.csv'  
+        
+        data.to_csv(filename, header = True, index = True)
+        print(filename)    
+
+        
+    elif metric_type == 'classificationReport':
+        filename = path + timestamp +'_' + model_name + '_classificationReport.txt'
+        
+        with open(filename, 'w') as file:
+            file.write(data)
+            print(filename)    
+        
 
 
 
