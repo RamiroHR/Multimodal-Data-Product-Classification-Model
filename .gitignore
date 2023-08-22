@@ -7,3 +7,4 @@ __pycache__
 to_check_Preprocessed_data/
 to_check_Trained_models_and_metrics/
 NLTK_laguage_detection.ipynb
+tmp_checkpoint/
