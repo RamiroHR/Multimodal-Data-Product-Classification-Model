@@ -970,7 +970,7 @@ def initialize_fusion_NN(params): #(Nb_features, Nb_classes):
 
 #     dense2 = Dense(units = 512, activation = "relu",
 #                    kernel_initializer ='normal', name = "dense_2")
-    dense2 = Dense(units = 64,
+    dense2 = Dense(units = 256,
                    kernel_initializer ='normal', name = "dense_2")
         
     norm_2 = BatchNormalization() #epsilon=1e-06, mode=0, momentum=0.9, weights=None
@@ -1159,22 +1159,36 @@ def plot_classificationReport(micro_cr):
 def save_model_metrics(data, metric_type, model_name, path, timestamp):
     '''
     Save the data being iether the confusion matrix or the classififcation report.
+    Chose 'metric_type' from the below list:
+        'confusionMatrix'
+        'classificationReport_txt'
+        'classificationReport_df' (preferable option)
     '''
     
+    filename = path + timestamp +'_' + model_name
+    
     if metric_type == 'confusionMatrix':
-        filename = path + timestamp +'_' + model_name + '_confusionMatrix.csv'  
+        filename = filename + '_confusionMatrix.csv'  
+        
+        data.to_csv(filename, header = True, index = True)
+        print(filename)    
+
+
+    elif metric_type == 'classificationReport_df':
+        filename = filename + '_classificationReport.csv'  
         
         data.to_csv(filename, header = True, index = True)
         print(filename)    
 
         
-    elif metric_type == 'classificationReport':
-        filename = path + timestamp +'_' + model_name + '_classificationReport.txt'
+    elif metric_type == 'classificationReport_txt':
+        filename = filename + '_classificationReport.txt'
         
         with open(filename, 'w') as file:
             file.write(data)
             print(filename)    
-        
+
+            
 
 
 
