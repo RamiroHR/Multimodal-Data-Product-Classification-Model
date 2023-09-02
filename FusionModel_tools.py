@@ -2,6 +2,7 @@ import time
 import numpy as np
 import pandas as pd
 import os 
+import math
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -1008,20 +1009,116 @@ def initialize_fusion_NN(params): #(Nb_features, Nb_classes):
     
     
     ## define training process
-    NN_clf.compile(loss = 'categorical_crossentropy',  
-              optimizer = 'adam',                 
-              metrics = ['accuracy'])  
+#     NN_clf.compile(loss = 'categorical_crossentropy',  
+#               optimizer = 'adam',                 
+#               metrics = ['accuracy'])  
 
     display(NN_clf.summary())
     
     return NN_clf
 
 
+# def get_schedule(epoch, lr, lr0, epochs, kind = 'exp'):
+#     '''
+#     define the type of scheduler function f(epoch, lr) to return
+#     '''
+    
+#     if kind == 'rational':
+#         decay_rate = lr0 / epochs  # good initial estimation. It can be set to another value.
+        
+#         def rational_decay(epoch, lr):
+#             return lr/(1+decay_rate*epoch)
+
+#         return rational_decay
+    
+#     if kind == 'step':
+#         dropRate = 0.5  # float in (0,1], amount by which the learning rate is moified each time.
+#         epochRate = 5   # int >= 1, how often to modify the learning rate.
+        
+#         def step_decay(epoch, lr):
+#             return lr0 * math.pow(dropRate, math.floor( (1+epoch)/epochRate ) )
+    
+#         return step_decay
+    
+#     if kind == 'exp':
+#         initial_wait = 10  # initial waitin Nb of epochs before starting to decrease lr.
+#         decay_rate = -0.1  # float in [-inf,0] 
+        
+#         def exp_decay(epoch, lr):
+#             if epoch < initial_wait:
+#                 return lr
+#             else:
+#                 return lr * tf.math.exp(decay_rate)
+        
+#         return exp_decay
+    
+
+def get_rational_schedule(decay_rate):
+    '''
+    decay_rate = lr_initial / Nb_epochs is a good initial estimation. 
+    But it can be adjusted to another value.
+    '''
+    ## define scheduler function
+    def rational_decay(epoch, lr):
+        return lr/(1+decay_rate*epoch)
+
+    ## return function
+    return rational_decay
+
+
+def get_step_schedule(decay_drop, decay_freq):
+    
+    ## define scheduler function    
+    def step_decay(epoch, lr):
+        if (epoch % decay_freq) != 0 or epoch == 0:
+            return lr
+        else:
+            return lr*decay_drop 
+
+    ## return function
+    return step_decay
+        
+        
+def get_exp_schedule(decay_rate, initial_wait):
+    
+    ## define scheduler function
+    def exp_decay(epoch, lr):
+        if epoch < initial_wait:
+            return lr
+        else:
+            return lr * math.exp(-decay_rate)
+
+    ## return function
+    return exp_decay
+    
+
+def plot_lr_schedule(schedules, names, lr0, epochs):
+    
+    art = sns.color_palette()
+    labels = []
+
+    plt.figure(figsize = (4.5,3.5))
+    for i, schedule in enumerate(schedules):
+        lr = lr0
+        for epoch in range(epochs):
+            lr = schedule(epoch, lr)
+            plt.scatter(epoch, lr, color=art[i], s = 10)
+        
+            if epoch == 1:
+                plt.scatter(epoch, lr, color=art[i], s = 10, label = names[i]) #, label='schedule_'+str(i+1) 
+    
+    plt.legend(loc = 'center right')
+    plt.xlabel("epochs")
+    plt.ylabel("learning rate")
+#     plt.ylim(0,0.2e-4)
+    plt.show()
+    
+    return 
 
 ##########################################################################################################
 ## model evaluations
 
-def plot_training_history(training_history, N_epochs, yrange = None):
+def plot_training_history(training_history, N_epochs, AccRange = None, LossRange = None):
     '''
     simple plot of the training and validation accuracy vs epochs
     '''
@@ -1030,21 +1127,34 @@ def plot_training_history(training_history, N_epochs, yrange = None):
 
     train_acc = training_history.history['accuracy']
     val_acc = training_history.history['val_accuracy']
+
+    train_loss = training_history.history['loss']
+    val_loss = training_history.history['val_loss']
+
     
     import matplotlib.pyplot as plt
     import seaborn as sns
     sns.set()
 
-    plt.figure(figsize=(8,6))
+    fig, axs = plt.subplots(1,2,figsize=(12,5))
 
-    sns.lineplot(x = x_epochs, y = train_acc, marker = 'o', label = 'Training Accuracy')
-    sns.lineplot(x = x_epochs, y = val_acc, marker = 'o', label = 'Validation Accuracy')
-
-    plt.xlabel('Epochs')
-    plt.ylabel('Accuracy')
-    plt.title('Accuracy Evolution during training: NN_clf')
-    plt.legend(loc='lower right')#loc='right'
-    plt.ylim(yrange[0], yrange[1])
+    ax = axs[0]
+    sns.lineplot(x = x_epochs, y = train_acc, marker = 'o', ax=ax, label = 'Training Accuracy')
+    sns.lineplot(x = x_epochs, y = val_acc, marker = 'o', ax=ax, label = 'Validation Accuracy')
+    ax.set_xlabel('Epochs')
+    ax.set_ylabel('Accuracy')
+    ax.set_title('Accuracy Evolution during training')
+    ax.legend()#loc='right'
+    ax.set_ylim(AccRange[0], AccRange[1]) if AccRange is not None else ax.set_ylim()
+    
+    ax = axs[1]
+    sns.lineplot(x = x_epochs, y = train_loss, marker = 'o', ax=ax, label = 'Training loss')
+    sns.lineplot(x = x_epochs, y = val_loss, marker = 'o', ax=ax, label = 'Validation loss')
+    ax.set_xlabel('Epochs')
+    ax.set_ylabel('Loss function')
+    ax.set_title('Loss Evolution during training')
+    ax.legend()#loc='right'
+    ax.set_ylim(LossRange[0], LossRange[1]) if LossRange is not None else ax.set_ylim()
     
     return
 
