@@ -1,6 +1,9 @@
 # Authors
 Ramiro H. Rodriguez
 
+# Description of the project:
+Cataloging products according to different data (texts and images) is important for e-commerce since it allows for various applications such as product recommendation and personalized research. It is then a question of predicting the type code of the products knowing textual data (designation and description of the products) as well as image data (image of the product).
+
 # Directory Structure
 
     ├── README.md                    <- The top-level README for developers using this project.
@@ -9,14 +12,11 @@ Ramiro H. Rodriguez
     │   ├── Final_report              
     │   └── Project_presentation     
     |
-    ├── data
-    │   ├── external                 <- Data from third party sources.
-    │   ├── interim                  <- Intermediate data that has been transformed.
-    │   ├── processed                <- The final, canonical data sets for modeling.
-    │   └── raw                      <- The original, immutable data dump.
+    ├── data                         <- Data from third party sources.
+    │   
     │
-    ├── requirements.txt             <- The requirements file for reproducing the analysis environment, e.g.
-    │                                   generated with `pip freeze > requirements.txt`
+    ├── rakuten_env2.yml             <- The requirements file for reproducing the analysis environment with conda
+    │                                   
     |
     ├── notebooks                    <- Jupyter notebooks. Naming convention is a number (for ordering),
     │                                   the creator's initials, and a short `-` delimited description, e.g.
@@ -48,15 +48,23 @@ Ramiro H. Rodriguez
     │   │   ├── predict_model.py
     │   │   └── train_model.py
     │   │
-    │   └── visualization  <- Scripts to create exploratory and results oriented visualizations
-    │       └── visualize.py
 
+
+
+# Data: 
+This project is part of the Rakuten France Multimodal Product Data Classification challenge, the data and their description are available at: https://challengedata.ens.fr/challenges/35 
+* Text data: ~60 mb
+* Image data: ~2.2 gb
+* 99k data with over 1000 classes.  
+
+<br>
 
 # Project Reports
 * ```Rakuten_Final_Report_Ramiro_Rodriguez.pdf``` is a detailed report of the data exploration, preprocessing and modeling phases. It contains information about the models benchmark, evaluation and fine tuning, as well as the final model performance.  
 
 * ```Project_Presentation.pdf``` are the slides for a brief description of the project.
 
+<br>
 
 # Environment 
 Activate conda environment with:
@@ -64,11 +72,12 @@ Activate conda environment with:
 conda activate rakuten_env2
 ```
 
+<br>
 
 # Streamlit application
-Navigate to the repository streamlit folder. Make sure to activate the conda environment
+Navigate to the repository streamlit folder on this project. Make sure to activate the conda environment
 ```
-cd C:\PATH_TO_REPOSITORY\streamlit
+cd streamlit/
 ```
 
 Then launch the streamlit application on the browser
