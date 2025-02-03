@@ -150,7 +150,7 @@ def get_decoded_predictions(sample_pred_vector):
     sample_pred_code = target_encoder.inverse_transform(sample_pred_label)[0]
     
     ## get predicted class name
-    path = '../'
+    path = '../references/'
     product_class = pd.read_csv(path + 'product_class.csv', sep = ';')
     product_class.drop('target', axis = 1, inplace = True)
     
@@ -173,7 +173,7 @@ def get_decoded_predictions_with_confidence(sample_pred_vector, num = 3):
     pred_codes = [target_encoder.inverse_transform(label)[0] for label in pred_labels]
     
     ## get predicted class name
-    path = '../'
+    path = '../references/'
     product_class = pd.read_csv(path + 'product_class.csv', sep = ';')
     product_class.drop('target', axis = 1, inplace = True)
     
